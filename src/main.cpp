@@ -12,14 +12,16 @@
 #define ENABLE_PIN 10
 //
 
-const float PI2 = 2.0 * PI;
-const float THETA_THRESHOLD = PI / 20;
+#define ENCODE_RES 8000
 
-#define ENCODER_POS_TO_DEGREE(ENCODE_POS) ( ( ENCODE_POS / 4096.0 ) * 360.0 )
+const float PI2 = 2.0 * PI;
+const float THETA_THRESHOLD = PI / 12;
+
+#define ENCODER_POS_TO_DEGREE(ENCODE_POS) ( ( ENCODE_POS / ENCODE_RES ) * 360.0 )
 // #define DEGREE_TO_RAD(DEGREE) (DEGREE * PI / 180.0)
 
 
-#define DEBUG_POLLING
+// #define DEBUG_POLLING
 
 enum direction { right, left };
 
@@ -32,9 +34,9 @@ Encoder encoder(EN_A_PIN, EN_B_PIN);
 AccelStepper stepper = AccelStepper( DRIVER_MODE, PULSE_PIN, DIR_PIN );
 
 // Config define
-#define MAX_CART_SPEED 1000.0
+#define MAX_CART_SPEED 5500
 
-float getAngle(long pulse, long ppr){
+float getAngle(float pulse, float ppr){
   float angle = (PI + PI2 * pulse / ppr);
   while (angle > PI) {
     angle -= PI2;
@@ -70,7 +72,7 @@ void _debugHardwarePolling() {
       Serial.print(" ");
 
       Serial.print( "Pendulum angle: " );
-      Serial.print( getAngle(encoder.read(), 4096.0) );
+      Serial.print( getAngle(encoder.read(), ENCODE_RES) );
       Serial.print(" ");
 
 
@@ -111,28 +113,36 @@ void controlStepMotor( direction dir, uint16_t target_pos ){
 void configHardware() {
   digitalWrite( ENABLE_PIN, LOW ); //Enable Step motor driver
   stepper.setMaxSpeed(MAX_CART_SPEED);
-  stepper.setAcceleration(10000.0);
-  stepper.setSpeed(1000);
+  stepper.setAcceleration(MAX_CART_SPEED);
+  stepper.setSpeed(MAX_CART_SPEED);
   stepper.setPinsInverted(1); //plus = right
 }
 
 float pidControl(float setpoint, float current_point) {
-  const int KP = 20000;
-  const int KI = 0;
-  const int KD = 0;
+  // Return Max speed 
+  const float KP = 700000;
+  const float KI = 0.0;
+  const float KD = 100000;
   float current_pos = current_point;
-  static float sum_error = 0;
-  static float pre_error = 0;
-  float speed = 0;
-  float error = 0;
+  static float sum_error = 0.0;
+  static float pre_error = 0.0;
+  float speed = 0.0;
+  float error = 0.0;
 
   error = current_pos - setpoint;
   sum_error = sum_error + error;
 
+  // if (error < 0){
+  //   error = -1.0f;
+  // }else if (error > 0) {
+  //   error = 1.0f;
+  // } else {
+  //   error = 0.0f;
+  // }
+
   speed = (error * KP) + (sum_error * KI) + (pre_error * KD);
   speed = constrain(speed, -MAX_CART_SPEED, MAX_CART_SPEED);
   pre_error = error;
-
   return -speed;
 }
 
@@ -146,7 +156,7 @@ void goToHome() {
 }
 
 void goToMid() {
-  stepper.moveTo(-5000);
+  stepper.moveTo(-20000);
   while(stepper.isRunning()){
     stepper.run();
     _debugHardwarePolling();
@@ -165,8 +175,19 @@ void setup() {
 
 
 void loop() {
-  float theta = getAngle(encoder.read(), 4096.0);
-  stepper.setSpeed(pidControl(0, theta));
-  if (isControllable(theta) && fabs(theta) > PI/60) stepper.run();
-  // _debugHardwarePolling();
+  static uint32_t last_time = 0;
+  const int interval_time = 50;
+  if (millis() - last_time > interval_time){
+    float theta = getAngle(encoder.read(),  ENCODE_RES);
+    float speed = pidControl(0.0, theta);
+    if (!(isControllable(theta))){
+      stepper.setSpeed(0);
+    } else {
+      stepper.setSpeed(speed);
+    }
+    last_time = millis();
+  }
+
+  if (!(stepper.speed() == 0)) stepper.runSpeed();
+  _debugHardwarePolling();
 }
