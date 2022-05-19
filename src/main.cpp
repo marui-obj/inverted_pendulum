@@ -120,9 +120,9 @@ void configHardware() {
 
 float pidControl(float setpoint, float current_point) {
   // Return Max speed 
-  const float KP = 700000;
-  const float KI = 0.0;
-  const float KD = 100000;
+  const float KP = 1200000;
+  const float KI = 0;
+  const float KD = 200000;
   float current_pos = current_point;
   static float sum_error = 0.0;
   static float pre_error = 0.0;
